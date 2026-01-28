@@ -1,0 +1,7 @@
+{
+  "name": "FluentFlow: English Speaking Partner",
+  "description": "An interactive English learning application that asks deep, life-focused questions and provides high-quality model answers with voice synthesis to help users improve their fluency and descriptive skills.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
