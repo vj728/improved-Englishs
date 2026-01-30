@@ -21,6 +21,7 @@ const App: React.FC = () => {
   const [currentQuestion, setCurrentQuestion] = useState<string>('');
   const [suggestedAnswer, setSuggestedAnswer] = useState<string>('');
   const [customQuestion, setCustomQuestion] = useState<string>('');
+  const [userAnswer, setUserAnswer] = useState<string>(''); // For Hinglish input
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isStreaming, setIsStreaming] = useState<boolean>(false);
@@ -51,7 +52,7 @@ const App: React.FC = () => {
       setCurrentQuestion(question);
     } catch (err: any) {
       if (err.message === "QUOTA_EXCEEDED") setIsQuotaError(true);
-      setError("Quota limit reached. Try waiting or switch keys.");
+      setError("We’ve reached today’s practice limit. Please try again later.");
     } finally {
       setIsLoading(false);
     }
@@ -61,6 +62,7 @@ const App: React.FC = () => {
     setConvScript('');
     setCurrentQuestion('');
     setSuggestedAnswer('');
+    setUserAnswer('');
     if (mode === 'standard' || mode === 'hinglish') {
       loadQuestion(mode);
     }
@@ -81,9 +83,24 @@ const App: React.FC = () => {
       }
     } catch (err: any) {
       if (err.message === "QUOTA_EXCEEDED") setIsQuotaError(true);
-      setError("Quota exhausted. Switch API keys to continue immediately.");
+      setError("We’ve reached today’s practice limit. Please try again later.");
     } finally {
       setIsStreaming(false);
+    }
+  };
+
+  const handleConvertHinglish = async () => {
+    if (!userAnswer) return;
+    setIsLoading(true);
+    setSuggestedAnswer('');
+    setError(null);
+    try {
+      const cleanEnglish = await geminiService.convertHinglishToEnglish(userAnswer);
+      setSuggestedAnswer(cleanEnglish);
+    } catch (err) {
+      setError("Could not convert text. Please try again.");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -98,7 +115,7 @@ const App: React.FC = () => {
         setConvScript(prev => prev + chunk);
       }
     } catch (err) {
-      setError("Generation failed. Please try again.");
+      setError("We’ve reached today’s practice limit. Please try again later.");
     } finally {
       setIsStreaming(false);
     }
@@ -142,8 +159,8 @@ const App: React.FC = () => {
                   key={m}
                   onClick={() => setMode(m as PracticeMode)}
                   className={`px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${mode === m
-                      ? 'bg-[var(--accent)] text-white shadow-lg shadow-[var(--accent)]/30'
-                      : 'text-[var(--text-muted)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)]'
+                    ? 'bg-[var(--accent)] text-white shadow-lg shadow-[var(--accent)]/30'
+                    : 'text-[var(--text-muted)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)]'
                     }`}
                 >
                   {m}
@@ -225,14 +242,6 @@ const App: React.FC = () => {
               <div className="card-entry rounded-[2.5rem] p-8 md:p-10 space-y-8 animate-in slide-in-from-bottom-8 duration-700">
                 <div className="flex justify-between items-center pb-6 border-b border-[var(--border)]">
                   <span className="text-[11px] font-bold uppercase tracking-widest opacity-50">Script Output</span>
-                  <button
-                    onClick={() => handleSpeak(convScript)}
-                    disabled={isSpeaking}
-                    className="p-3 rounded-xl bg-[var(--accent-soft)] text-[var(--accent)] hover:bg-[var(--accent)] hover:text-white transition-colors btn-active disabled:opacity-50"
-                    title="Read Aloud"
-                  >
-                    {isSpeaking ? <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z" /></svg>}
-                  </button>
                 </div>
                 <div className="space-y-6">
                   {convScript.split('\n').filter(l => l.trim()).map((line, i) => {
@@ -289,21 +298,56 @@ const App: React.FC = () => {
                       <h2 className="text-3xl md:text-5xl font-extrabold leading-tight tracking-tight text-balance">
                         {currentQuestion || "Ready to start?"}
                       </h2>
+                      {currentQuestion && (
+                        <p className="text-sm md:text-base text-[var(--text-muted)] italic opacity-75">
+                          “Think about your answer in English before reading the sample.”
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Hinglish Input Area */}
+                  {mode === 'hinglish' && (
+                    <div className="input-focus-ring rounded-[2.5rem] animate-in slide-in-from-bottom-4 mt-8 md:mt-12 bg-[var(--bg-color)] p-2 border border-[var(--border)] shadow-sm">
+                      <textarea
+                        className="w-full p-6 bg-transparent border-none outline-none font-serif text-xl md:text-2xl leading-relaxed min-h-[160px] resize-none placeholder:text-[var(--text-muted)] placeholder:opacity-40 transition-all text-[var(--text-main)]"
+                        placeholder="Type your thought here... (e.g., 'mujhe book padhna pasand hai')"
+                        value={userAnswer}
+                        onChange={(e) => setUserAnswer(e.target.value)}
+                      />
+                      <div className="px-6 pb-4 text-xs font-bold uppercase tracking-widest opacity-30 text-right">
+                        Hinglish Input
+                      </div>
                     </div>
                   )}
 
                   <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
-                    <button
-                      onClick={handleShowAnswer}
-                      disabled={isStreaming || (mode === 'custom' && !customQuestion) || (mode !== 'custom' && !currentQuestion)}
-                      className="w-full sm:w-auto px-8 py-4 rounded-[1.5rem] font-bold text-white text-lg shadow-xl shadow-[var(--accent)]/20 btn-active disabled:opacity-50 disabled:grayscale transition-all bg-gradient-to-br from-[var(--accent)] to-[var(--accent)] hover:brightness-110"
-                    >
-                      {isStreaming ? 'Thinking...' : 'Get Feedback'}
-                    </button>
+                    {mode === 'hinglish' ? (
+                      <button
+                        onClick={handleConvertHinglish}
+                        disabled={isLoading || !userAnswer}
+                        className="w-full md:w-auto md:min-w-[240px] py-4 px-8 rounded-[2rem] font-bold text-white text-lg shadow-xl shadow-[var(--accent)]/20 btn-active disabled:opacity-50 disabled:grayscale transition-all bg-gradient-to-br from-[var(--accent)] to-[var(--accent)] hover:brightness-110 hover:scale-105 active:scale-95"
+                      >
+                        {isLoading ? (
+                          <span className="flex items-center justify-center gap-2">
+                            <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                            Converting...
+                          </span>
+                        ) : 'Natural English'}
+                      </button>
+                    ) : (
+                      <button
+                        onClick={handleShowAnswer}
+                        disabled={isStreaming || (mode === 'custom' && !customQuestion) || (mode !== 'custom' && !currentQuestion)}
+                        className="w-full md:w-auto md:min-w-[240px] py-4 px-8 rounded-[2rem] font-bold text-white text-lg shadow-xl shadow-[var(--accent)]/20 btn-active disabled:opacity-50 disabled:grayscale transition-all bg-gradient-to-br from-[var(--accent)] to-[var(--accent)] hover:brightness-110 hover:scale-105 active:scale-95"
+                      >
+                        {isStreaming ? 'Thinking...' : 'Get Feedback'}
+                      </button>
+                    )}
                     {(mode === 'standard' || mode === 'hinglish') && (
                       <button
                         onClick={() => loadQuestion(mode)}
-                        className="w-full sm:w-auto px-8 py-4 rounded-[1.5rem] font-bold text-sm uppercase tracking-widest transition-all btn-active border border-[var(--border)] hover:bg-[var(--bg-color)] text-[var(--text-muted)] hover:text-[var(--text-main)]"
+                        className="w-full md:w-auto md:min-w-[240px] py-4 px-8 rounded-[2rem] font-bold text-lg transition-all btn-active border-2 border-[var(--border)] hover:bg-[var(--bg-color)] text-[var(--text-muted)] hover:text-[var(--text-main)] hover:scale-105 active:scale-95"
                       >
                         New Question
                       </button>
@@ -318,15 +362,10 @@ const App: React.FC = () => {
                 <div className="flex justify-between items-center pb-6 border-b border-[var(--border)]">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-[var(--accent)] text-white font-bold text-xs shadow-md">AI</div>
-                    <span className="text-[11px] font-bold uppercase tracking-widest opacity-50">Model Suggestion</span>
+                    <span className="text-[11px] font-bold uppercase tracking-widest opacity-50">
+                      {mode === 'hinglish' ? 'Corrected English' : 'Model Suggestion'}
+                    </span>
                   </div>
-                  <button
-                    onClick={() => handleSpeak(suggestedAnswer)}
-                    disabled={isSpeaking}
-                    className="p-3 rounded-xl bg-[var(--accent-soft)] text-[var(--accent)] hover:bg-[var(--accent)] hover:text-white transition-colors btn-active"
-                  >
-                    {isSpeaking ? <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z" /></svg>}
-                  </button>
                 </div>
                 <div className="relative">
                   <p className="text-xl md:text-2xl font-medium leading-relaxed opacity-90 text-[var(--text-main)]">{suggestedAnswer}</p>
@@ -339,16 +378,7 @@ const App: React.FC = () => {
 
         {error && (
           <div className="mx-auto max-w-md p-6 rounded-[2rem] bg-red-500/10 border border-red-500/20 text-red-600 text-center animate-in zoom-in-95 backdrop-blur-sm">
-            <p className="font-bold text-xs uppercase tracking-widest mb-2">Error Encountered</p>
             <p className="font-medium text-sm">{error}</p>
-            {isQuotaError && (
-              <button
-                onClick={() => window.aistudio?.openSelectKey()}
-                className="mt-4 px-6 py-3 bg-red-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest shadow-lg btn-active hover:bg-red-700 transition-colors"
-              >
-                Change API Key
-              </button>
-            )}
           </div>
         )}
       </main>

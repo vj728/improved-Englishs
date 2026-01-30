@@ -1,6 +1,8 @@
 
 import { GoogleGenAI, Modality } from "@google/genai";
 import { PracticeMode } from "../types";
+import { STANDARD_QUESTIONS } from "../data/standardQuestions";
+import { HINGLISH_QUESTIONS } from "../data/hinglishQuestions";
 
 /**
  * Helper to handle retries for API calls (Exponential Backoff)
@@ -26,15 +28,25 @@ export const geminiService = {
   async generateQuestion(mode: PracticeMode, previousQuestions: string[] = []): Promise<string> {
     if (mode === 'conversation') return '';
 
-    const historyContext = previousQuestions.length > 0 
-      ? `\n\nAvoid these previous questions: ${previousQuestions.join(', ')}` 
+    // Standard Mode: Use static local questions (Zero Latency, Zero Cost)
+    if (mode === 'standard') {
+      // Simulate a small "thinking" delay for better UX (smooth transition)
+      await new Promise(resolve => setTimeout(resolve, 800));
+      const randomIndex = Math.floor(Math.random() * STANDARD_QUESTIONS.length);
+      return STANDARD_QUESTIONS[randomIndex].question;
+    }
+
+    // Hinglish Mode: Use static local questions
+    if (mode === 'hinglish') {
+      const randomIndex = Math.floor(Math.random() * HINGLISH_QUESTIONS.length);
+      return HINGLISH_QUESTIONS[randomIndex].question;
+    }
+
+    const historyContext = previousQuestions.length > 0
+      ? `\n\nAvoid these previous questions: ${previousQuestions.join(', ')}`
       : '';
 
-    const systemPrompt = mode === 'hinglish' 
-      ? `You are an English teacher. Generate a VERY SHORT (max 6 words) question in a mix of ENGLISH and HINDI.
-         Focus on a single thought. Example: "Aaj aapka mood kaisa hai?" or "What are you doing abhi?"
-         Only return the question text.${historyContext}`
-      : `Generate a single, unique, VERY SHORT (max 8 words) question for an English beginner. 
+    const systemPrompt = `Generate a single, unique, VERY SHORT (max 8 words) question for an English beginner. 
          Focus on daily life, hobbies, or personal thoughts. Only return the question text in English.${historyContext}`;
 
     return withRetry(async () => {
@@ -64,7 +76,7 @@ export const geminiService = {
   /**
    * Generates a conversation script between two characters.
    */
-  async *generateConversationStream(who: string, whom: string, topic: string): AsyncGenerator<string> {
+  async * generateConversationStream(who: string, whom: string, topic: string): AsyncGenerator<string> {
     const prompt = `Write a conversation script between two people: "${who}" and "${whom}".
       The topic is: "${topic}".
       Format it exactly like this:
@@ -92,7 +104,22 @@ export const geminiService = {
   /**
    * Generates a detailed model answer in a STREAMING fashion.
    */
-  async *generateSuggestedAnswerStream(mode: PracticeMode, question: string): AsyncGenerator<string> {
+  async * generateSuggestedAnswerStream(mode: PracticeMode, question: string): AsyncGenerator<string> {
+
+    // Standard Mode: Use static local answers (Zero Latency, Zero Cost)
+    if (mode === 'standard') {
+      const match = STANDARD_QUESTIONS.find(q => q.question === question);
+      if (match) {
+        // Simulate streaming for better UX
+        const chunks = match.answer.split(' ');
+        for (const chunk of chunks) {
+          yield chunk + ' ';
+          await new Promise(resolve => setTimeout(resolve, 50)); // Fast type-writer effect
+        }
+        return;
+      }
+    }
+
     const prompt = mode === 'hinglish'
       ? `Question: "${question}"
          Provide a VERY LONG and VERY DETAILED answer in "Hinglish" (Mixed English and Hindi). 
@@ -121,6 +148,38 @@ export const geminiService = {
       }
       yield "I am having some trouble generating a detailed answer right now. Please try again in a few moments.";
     }
+  },
+
+  /**
+   * Converts Hinglish thought to natural English.
+   */
+  async convertHinglishToEnglish(hinglishText: string): Promise<string> {
+    const prompt = `Translate this Hinglish thought (Hindi + English mix) into a natural, complete English sentence.
+    
+    Input: "${hinglishText}"
+    
+    Rules:
+    - Output ONLY the clean English translation.
+    - No explanations, no quotes.
+    - Make it sound natural and fluent.
+    
+    Example:
+    Input: "no i am not well because kal se mujhe tej bukhar hai"
+    Output: "No, I am not well because I have had a high fever since yesterday."`;
+
+    return withRetry(async () => {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: prompt,
+        config: {
+          temperature: 0.3,
+        }
+      });
+      const text = response.text?.trim();
+      if (!text) throw new Error("Empty response");
+      return text;
+    });
   },
 
   /**
